@@ -1,0 +1,26 @@
+{
+    "m_f0": 250,
+    "m_bandwidth": 150,
+    "m_df":1,
+    "m_Nsnaps":1024,
+    "m_Nbeams":1024,
+    "m_M_HLA":32,
+    "m_HLA_z0":110,
+    "m_int_snr_":[25],
+    "m_target_snr":15,
+    "m_flg_snr_avg":1,
+    "m_target_tone_spacing":1,
+    "m_int_range_bearing_depth":[[4000,0,110]],
+    "m_target_range_bearing_depth": [4000,18,110],
+    "p_num_epochs":1024,
+    "p_min_epochs":32,
+    "p_focusing_load_factor":0.001,
+    "p_parameter_reduction_factor":4,
+    "p_min_improvement":0.0001,
+    "p_min_lr": 0.00000001,
+    "p_flg_init_presteer":1,
+    "p_bf_nbeams":301,
+    "p_bf_th0_deg": 0,
+    "p_bf_th1_deg":60
+  }
+  
