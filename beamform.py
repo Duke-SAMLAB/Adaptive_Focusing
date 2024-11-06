@@ -6,13 +6,15 @@ import pickle
 from scipy import signal
 from tqdm import tqdm
 import gc
+
 # Check if PyTorch is installed
 torch_spec = importlib.util.find_spec("torch")
 if torch_spec is not None:
     import torch
 
 import transforms as tf
-from common import *
+import common as cmn
+from common import H
 
 def get_src_points_1D(array_x__,depth, max_az=90,N=128,rbf=1e9):
   maxsinth = np.sin(np.radians(max_az))
@@ -38,7 +40,7 @@ def get_steering_vector(array_x__,src_x_,f):
   M = array_x__.shape[0]
   om = 2*np.pi*f
   prop_x__ = array_x__ - np.kron(src_x_,np.ones([M,1]))
-  a_ = np.exp(-1j*(om/swp.SWELLEX_SOUND_SPEED)*np.linalg.norm(prop_x__,axis=1)).reshape([M,1])
+  a_ = np.exp(-1j*(om/cmn.SWELLEX_SOUND_SPEED)*np.linalg.norm(prop_x__,axis=1)).reshape([M,1])
   a_ *= np.conj(a_[0])
   a_ /= np.linalg.norm(a_)
   return a_
@@ -85,7 +87,7 @@ def get_all_weights_narrowband_MVDR(V___, Rf___, Tfoc___, load_factor=0):
   F, M, Nbeams = V___.shape
   Rfloaded___ = torch.zeros(Rf___.shape,dtype=Rf___.dtype)
   for fidx in range(F):
-    Rfloaded___[fidx] = load_matrix_simple(Rf___[fidx],load_factor)
+    Rfloaded___[fidx] = cmn.load_matrix_simple(Rf___[fidx],load_factor)
   Rfinv___ = torch.linalg.inv(Rfloaded___)
   Wnum___ = Rfinv___ @ V___  # F x M x Nbeams = F x M x M @ F x M x Nbeams
   Wdenom___ = cmn.extract_diagonals(torch.abs(H(V___) @ Rfinv___ @ V___)) # F x N = diag( F x N x M @ F x M x M @ F x M x N)
@@ -103,7 +105,7 @@ def get_all_weights_wideband_MVDR(V___, Rf___, Tfoc___, freq_weight_ = None, loa
     freq_weight_ = torch.ones(F)
   freq_weight___ = freq_weight_.view(F,1,1)
   if flg_norm_trace:
-    Rfoc___ /= batch_trace(Rfoc___).view(F,1,1)
+    Rfoc___ /= cmn.batch_trace(Rfoc___).view(F,1,1)
   Rfoc___ *= freq_weight___
 
   Rwb__ = torch.mean(Rfoc___,axis=0).detach()
@@ -111,7 +113,7 @@ def get_all_weights_wideband_MVDR(V___, Rf___, Tfoc___, freq_weight_ = None, loa
 
   Rfpploaded___ = torch.zeros_like(Rfpp___)
   for fidx in range(F):
-    Rfpploaded___[fidx] = load_matrix_simple(Rfpp___[fidx], load_factor)
+    Rfpploaded___[fidx] = cmn.load_matrix_simple(Rfpp___[fidx], load_factor)
   Rfppinv___ = torch.linalg.inv(Rfpploaded___)
   Wnum___ = Rfppinv___ @ Vfoc___  # F x M x Nbeams = F x M x M @ F x M x Nbeams
   if flg_W_denom:

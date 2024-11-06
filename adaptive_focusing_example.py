@@ -279,3 +279,64 @@ if __name__ == '__main__':
   ### Save results to a pickle file for external plotting
   with(open(os.path.join(os.getcwd(),'fraz_results.pkl'),mode='wb')) as f:
     pickle.dump(_fraz___,f)
+
+
+### Plot results ###
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import AxesGrid
+
+# Dummy data to plot
+tf_name_ = _transforms.keys()
+bf_name = 'Wideband MVDR lf=1.00e-03'
+vals = [
+  cmn.todB(_fraz___['Pre-steer'][bf_name]),
+  cmn.todB(_fraz___['Fully_Adaptive'][bf_name]),
+  cmn.todB(_fraz___['Partially_Adaptive'][bf_name])]
+
+
+
+### Change these parameters as you need ###
+plot_titles = list(tf_name_)
+x_axis_label = 'Bearing (off of end-fire)'
+y_axis_label = 'Frequency (Hz)'
+cbar_label_pad = 15
+cbar_title = 'Power (dB)'
+fd = dict(size=12) # font dictionary for individual plots, change if needed
+x_vline = 0 # x location of vertical line on plots
+xmin = np.min(thdeg_) # the minimum x value on the plots
+xmax = np.max(thdeg_) # the maximum x value on the plots
+ymin = np.min(m_f_) # the minimum y value on the plots
+ymax = np.max(m_f_) # the maximum y value on the plots
+zmin = -30 # minimum color value
+zmax = 0 # maximum color value
+
+### Leave these alone ###
+extent = (xmin,xmax,ymin,ymax) # sets the x and y axis ranges
+aratio = (xmax - xmin) / (ymax - ymin) # This keeps the plots as squares
+imshow_args = dict(vmin=zmin,vmax=zmax,cmap='jet',aspect=aratio,extent=extent)
+
+fig = plt.figure()
+grid = AxesGrid(fig, 111,
+        nrows_ncols=(1, 3),
+        axes_pad=0.2,
+        share_all=True,
+        label_mode="L",
+        cbar_location="right",
+        cbar_mode="single",
+        )
+
+extent = (xmin,xmax,ymin,ymax)
+imshow_args = dict(vmin=zmin,vmax=zmax,cmap='jet',aspect=aratio,extent=extent,origin='lower')
+for i, (val, ax) in enumerate(zip(vals,grid)):
+  ax.set_xlabel(x_axis_label,fontdict=fd)
+  ax.set_ylabel(y_axis_label,fontdict=fd)
+  ax.set_title(plot_titles[i],fontdict=fd)
+  ax.vlines(x_vline,ymin,ymax,linestyles='dashed',colors='black',label='target')
+  im = ax.imshow(val, **imshow_args)
+  
+cbar = grid.cbar_axes[0].colorbar(im)
+cbar.set_label(cbar_title, rotation=270, labelpad=cbar_label_pad)
+
+
+plt.show()
+#plt.savefig('example_fig.png',bbox_inches='tight')

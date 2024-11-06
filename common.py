@@ -17,6 +17,11 @@ def is_unitary(A,atol=1e-5):
     print(vals)
   return flg_unitary
 
+def todB(x_):
+  x_ = 10*np.log10(x_)
+  x_ -= np.max(x_)
+  return x_
+
 def H(X__):
   if isinstance(X__,np.ndarray):
     return np.conj(np.swapaxes(X__,-1,-2))

@@ -18,7 +18,7 @@
     "p_parameter_reduction_factor":4,
     "p_min_improvement":0.0001,
     "p_min_lr": 0.00000001,
-    "p_flg_init_presteer":1,
+    "p_flg_init_presteer":0,
     "p_bf_nbeams":301,
     "p_bf_th0_deg": 0,
     "p_bf_th1_deg":60
