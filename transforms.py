@@ -3,7 +3,6 @@ import scipy
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tqdm import tqdm
 
 from common import *
 
@@ -80,8 +79,8 @@ class Focusing_Transform(torch.nn.Module):
     Returns: 
       F x M x M Householder matrices
     """
-    M = self.M
-    F = self.F
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
     r__ = WRp__.T / torch.linalg.norm(WRp__.T,ord=2,dim=1,keepdim=True) # F x M
     r___ = r__.unsqueeze(-1)
     eye___ = torch.eye(M,device=self.device).repeat(F,1,1) # F x M x M
@@ -108,9 +107,6 @@ class Focusing_Transform(torch.nn.Module):
     Rfoc___ = self.get_focused_covariances(Rf___)
     Rwb__ = torch.sum(Rfoc___,axis=0)
     return Rwb__
-
-LOADING_FACTOR = 1e-2
-INIT_VALUE = 1e-3
 
 class Presteer_Transform(Focusing_Transform):
   """
@@ -140,9 +136,10 @@ class Presteer_Transform(Focusing_Transform):
     Returns:
       Tf___: F x M x M set of diagonal focusing matrices
     """
-    M = self.M
-    F = self.F
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
     Tf___ = torch.zeros([F,M,M],dtype=torch.complex128)
+    ### Loop through F frequencies
     for fidx in range(F):
       om = 2*np.pi*self.f_[fidx]
       a_ = np.exp(-1j*(om/SOUND_SPEED)*self.n_*self.d*self.presteer_bearing)
@@ -157,8 +154,9 @@ class Fully_Adaptive_Focusing(Focusing_Transform):
     """
     Initializes all parameters of the transformation randomly using torch.randn.
     """
-    M = self.M
-    F = self.F
+    INIT_VALUE = 1e-3 # Hard-coded initialization scaling
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
     init_func_Diagonal = torch.randn # the random function to use for the parameters of the diagonal transforms
     init_func_Householder = torch.randn # the random function to use for the parameters of the Householder transforms
 
@@ -170,8 +168,10 @@ class Fully_Adaptive_Focusing(Focusing_Transform):
     self.WR3__ = torch.nn.Parameter(INIT_VALUE*init_func_Householder(M,F,dtype=torch.complex128).to(self.device))
     self.WR2__ = torch.nn.Parameter(INIT_VALUE*init_func_Householder(M,F,dtype=torch.complex128).to(self.device))
     self.WR1__ = torch.nn.Parameter(INIT_VALUE*init_func_Householder(M,F,dtype=torch.complex128).to(self.device))
-    self.DFT__ = (1/np.sqrt(self.M))*torch.from_numpy(scipy.linalg.dft(M)).to(self.device)
-    self.IDFT__ = H(self.DFT__)
+
+    ### Fixed DFT and IDFT matrices
+    self.DFT__ = (1/np.sqrt(self.M))*torch.from_numpy(scipy.linalg.dft(M)).to(self.device) # M x M
+    self.IDFT__ = H(self.DFT__) # M x M
 
   def init_parameters_presteer(self, k_, dsinth):
     """
@@ -180,8 +180,8 @@ class Fully_Adaptive_Focusing(Focusing_Transform):
       k_: Horizontal wavenumbers at each frequency bin. Should just be 2*np.pi * f_ / C in free-space
       dsinth: d * sin(bearing). Input the array spacing * sin(bearing), using broadside as 0
     """
-    M = self.M
-    F = self.F
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
 
     # Set all the parameters other than those for D3 to zero
     self.WD1__.data = torch.zeros([M,F],dtype=torch.double).to(self.device)
@@ -198,16 +198,16 @@ class Fully_Adaptive_Focusing(Focusing_Transform):
     self.WR1__.data[0,:] = 1
     
     D1___ = self.get_diagonal_from_weights(self.WD1__) # F x M x M
-    D2___ = self.get_diagonal_from_weights(self.WD2__)
-    D3___ = self.get_diagonal_from_weights(self.WD3__)
+    D2___ = self.get_diagonal_from_weights(self.WD2__) # F x M x M
+    D3___ = self.get_diagonal_from_weights(self.WD3__) # F x M x M
 
-    R4__ = self.get_householder_from_weights(self.WR4__)
-    R3__ = self.get_householder_from_weights(self.WR3__)
-    R2__ = self.get_householder_from_weights(self.WR2__)
-    R1__ = self.get_householder_from_weights(self.WR1__)
+    R4__ = self.get_householder_from_weights(self.WR4__) # F x M x M
+    R3__ = self.get_householder_from_weights(self.WR3__) # F x M x M
+    R2__ = self.get_householder_from_weights(self.WR2__) # F x M x M
+    R1__ = self.get_householder_from_weights(self.WR1__) # F x M x M
         
-    DFT___ = self.DFT__.repeat(F,1,1)
-    IDFT___ = self.IDFT__.repeat(F,1,1)
+    DFT___ = self.DFT__.repeat(F,1,1) # F x M x M
+    IDFT___ = self.IDFT__.repeat(F,1,1) # F x M x M
 
     I___ = R4__ @ R3__ @ IDFT___ @ D2___ @ R2__ @ R1__ @ DFT___ @ D1___
     
@@ -225,25 +225,27 @@ class Fully_Adaptive_Focusing(Focusing_Transform):
     """
     Utility function which returns all the focusing transformations.
     This is GPU optimized, as the matrix multiplications will occur on the specified device
+    Returns:
+      Tf___: F x M x M set of M x M focusing transformations using current parameters
     """
-    M = self.M
-    F = self.F
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
 
     D1___ = self.get_diagonal_from_weights(self.WD1__) # F x M x M
-    D2___ = self.get_diagonal_from_weights(self.WD2__)
-    D3___ = self.get_diagonal_from_weights(self.WD3__)
+    D2___ = self.get_diagonal_from_weights(self.WD2__) # F x M x M
+    D3___ = self.get_diagonal_from_weights(self.WD3__) # F x M x M
 
-    R4__ = self.get_householder_from_weights(self.WR4__)
-    R3__ = self.get_householder_from_weights(self.WR3__)
-    R2__ = self.get_householder_from_weights(self.WR2__)
-    R1__ = self.get_householder_from_weights(self.WR1__)
+    R4__ = self.get_householder_from_weights(self.WR4__) # F x M x M
+    R3__ = self.get_householder_from_weights(self.WR3__) # F x M x M
+    R2__ = self.get_householder_from_weights(self.WR2__) # F x M x M
+    R1__ = self.get_householder_from_weights(self.WR1__) # F x M x M
         
-    DFT___ = self.DFT__.repeat(F,1,1)
-    IDFT___ = self.IDFT__.repeat(F,1,1)
+    DFT___ = self.DFT__.repeat(F,1,1) # F x M x M
+    IDFT___ = self.IDFT__.repeat(F,1,1) # F x M x M
 
     Tf___ = D3___ @ R4__ @ R3__ @ IDFT___ @ D2___ @ R2__ @ R1__ @ DFT___ @ D1___
 
-    return Tf___
+    return Tf___ # F x M x M
 
 class Partially_Adaptive_Focusing(Focusing_Transform):
   """
@@ -285,8 +287,9 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
     Args:
       parameter_reduction_factor: Defines the factor by which to REDUCE the number of parameters. Set to 4 in the paper
     """
-    M = self.M
-    F = self.F
+    INIT_VALUE = 1e-3 # Hard-coded initialization scaling
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
 
     ### Compute N given the parameter reduction factor
     bound_on_N = (M * F) // (M + F)
@@ -331,9 +334,9 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
     """
     Utility function which initializes the partially-adaptive focusing as a pre-steering transformation
     """
-    M = self.M
-    F = self.F
-    N = self.N
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
+    N = self.N # Number of rows in UDq, VDq, URp, VRp
 
     small_init_value = 1e-3
     ### D3 should result in the pre-steering transformation
@@ -345,10 +348,11 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
     self.VD3__.data[1,:] = 1*torch.arange(F)
     self.VD3__.data[2:,:] = small_init_value
 
-    self.VD2__.data[1:,:] = 1 #small_init_value
-    self.VD2__.data[0,:] = 1 #small_init_value # 1
-    self.VD1__.data[1:,:] = 1 #small_init_value
-    self.VD1__.data[0,:] = 1 #small_init_value # 1
+    
+    self.VD2__.data[1:,:] = 1
+    self.VD2__.data[0,:] = 1
+    self.VD1__.data[1:,:] = 1
+    self.VD1__.data[0,:] = 1
 
     ### Set so that R4 = R3 and R2 = R1
     self.UR3__.data = self.UR4__.data
@@ -356,6 +360,7 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
     self.UR1__.data = self.UR2__.data
     self.VR1__.data = self.VR2__.data
 
+    ### For inspection purposes, set Df1, Df2, and Df3 = Identity for f index 0
     D1___ = self.get_diagonal_from_weights(self.UD1__ @ self.VD1__) # F x M x M
     D1___ = H(D1___[0]).repeat(F,1,1) @ D1___
     D2___ = self.get_diagonal_from_weights(self.UD2__ @ self.VD2__)
@@ -363,13 +368,13 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
     D3___ = self.get_diagonal_from_weights(self.UD3__ @ self.VD3__)
     D3___ = H(D3___[0]).repeat(F,1,1) @ D3___
 
-    R1___ = self.get_householder_from_weights(self.UR1__ @ self.VR1__)
-    R2___ = self.get_householder_from_weights(self.UR2__ @ self.VR2__)
-    R3___ = self.get_householder_from_weights(self.UR3__ @ self.VR3__)
-    R4___ = self.get_householder_from_weights(self.UR4__ @ self.VR4__)
+    R1___ = self.get_householder_from_weights(self.UR1__ @ self.VR1__) # F x M x M
+    R2___ = self.get_householder_from_weights(self.UR2__ @ self.VR2__) # F x M x M
+    R3___ = self.get_householder_from_weights(self.UR3__ @ self.VR3__) # F x M x M
+    R4___ = self.get_householder_from_weights(self.UR4__ @ self.VR4__) # F x M x M
         
-    DFT___ = self.DFT__.repeat(F,1,1)
-    IDFT___ = self.IDFT__.repeat(F,1,1)
+    DFT___ = self.DFT__.repeat(F,1,1) # F x M x M
+    IDFT___ = self.IDFT__.repeat(F,1,1) # F x M x M
 
     I___ = R4___ @ R3___ @ IDFT___ @ D2___ @ R2___ @ R1___ @ DFT___ @ D1___
     
@@ -383,30 +388,32 @@ class Partially_Adaptive_Focusing(Focusing_Transform):
   def get_all_transforms(self):
     """
     Utility function which returns all focusing transformations.
-    This is GPU optimized.
+    This function is GPU optimized by calling PyTorch's batch matrix multiply
+    Returns:
+      Tf___: F x M x M set of M x M focusing transformations using current parameters
     """
-    M = self.M
-    F = self.F
-    WD1__ = self.UD1__ @ self.VD1__ # M x F
-    WD2__ = self.UD2__ @ self.VD2__
-    WD3__ = self.UD3__ @ self.VD3__
+    M = self.M # Number of array elements
+    F = self.F # Number of frequency bins
+    WD1__ = self.UD1__ @ self.VD1__ # M x F = M x N @ N x F
+    WD2__ = self.UD2__ @ self.VD2__ # M x F = M x N @ N x F
+    WD3__ = self.UD3__ @ self.VD3__ # M x F = M x N @ N x F
 
     D1___ = self.get_diagonal_from_weights(WD1__) # F x M x M
     D2___ = self.get_diagonal_from_weights(WD2__) # F x M x M
     D3___ = self.get_diagonal_from_weights(WD3__) # F x M x M
 
-    WR1__ = self.UR1__ @ self.VR1__ # M x F
-    WR2__ = self.UR2__ @ self.VR2__ # M x F
-    WR3__ = self.UR3__ @ self.VR3__ # M x F
-    WR4__ = self.UR4__ @ self.VR4__ # M x F
+    WR1__ = self.UR1__ @ self.VR1__ # M x F = M x N @ N x F
+    WR2__ = self.UR2__ @ self.VR2__ # M x F = M x N @ N x F
+    WR3__ = self.UR3__ @ self.VR3__ # M x F = M x N @ N x F
+    WR4__ = self.UR4__ @ self.VR4__ # M x F = M x N @ N x F
 
-    R1___ = self.get_householder_from_weights(WR1__)
-    R2___ = self.get_householder_from_weights(WR2__)
-    R3___ = self.get_householder_from_weights(WR3__)
-    R4___ = self.get_householder_from_weights(WR4__)
+    R1___ = self.get_householder_from_weights(WR1__) # F x M x M
+    R2___ = self.get_householder_from_weights(WR2__) # F x M x M
+    R3___ = self.get_householder_from_weights(WR3__) # F x M x M
+    R4___ = self.get_householder_from_weights(WR4__) # F x M x M
     
-    DFT___ = self.DFT__.repeat(F,1,1)
-    IDFT___ = self.IDFT__.repeat(F,1,1)
+    DFT___ = self.DFT__.repeat(F,1,1) # F x M x M
+    IDFT___ = self.IDFT__.repeat(F,1,1) # F x M x M
 
     Tf___ = D3___ @ R4___ @ R3___ @ IDFT___ @ D2___ @ R2___ @ R1___ @ DFT___ @ D1___
     return Tf___

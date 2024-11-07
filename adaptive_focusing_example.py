@@ -29,6 +29,10 @@ if __name__ == '__main__':
     print("Could not find or load a valid simulation configuration at %s"%config_path)
     raise(e)
 
+  ### Some naming conventions ###
+  # m_varname means this variable is a model parameter
+  # p_varname means this variable is a processing parameter
+
   ### Environment parameters ###
   m_f0 = config['m_f0'] # starting frequency
   m_bandwidth = config['m_bandwidth'] # total bandwidth in Hz
@@ -39,13 +43,12 @@ if __name__ == '__main__':
   m_Nbeams = config['m_Nbeams'] # number of beams in grid, used to ensure source is placed on grid
 
   ### Array parameters ###
-  m_int_snr_ = np.asarray(config['m_int_snr_'])
-  m_M_HLA = config['m_M_HLA']
-  m_HLA_z0 = config['m_HLA_z0']
-  m_M = m_M_HLA
-  m_target_SNR = config['m_target_snr']
-  m_target_tone_spacing = config['m_target_tone_spacing']
-  m_flg_target_planewave = config.pop('m_flg_target_planewave',1)
+  m_int_snr_ = np.asarray(config['m_int_snr_']) # 1D vector of interference SNRs in dB
+  m_M_HLA = config['m_M_HLA'] # number of elements in the HLA
+  m_HLA_z0 = config['m_HLA_z0'] # depth of the HLA
+  m_M = m_M_HLA # total number of array elements
+  m_target_SNR = config['m_target_snr'] # target SNR in dB
+  m_target_tone_spacing = config['m_target_tone_spacing'] # target is a sum of tones, this specifies the tone spacing in Hz
 
   ### SNR measurement parameters
   ### These are used to control how SNR is measured.
@@ -60,7 +63,7 @@ if __name__ == '__main__':
   m_target_range_bearing_depth_ = np.asarray(config['m_target_range_bearing_depth']) # meters, degrees, meters 
 
   ### Load processing parameters ###
-  LEARNING_RATE = 1e-3
+  LEARNING_RATE = 1e-3 # Transform training learning rate, hard-coded to 1e-3 which is typical in ML, don't ask why
   NUM_EPOCHS = config['p_num_epochs'] # How many epochs to run training for
   focusing_lf = config['p_focusing_load_factor'] # How much to load the focused wideband covariance. Sets the sensitivity to noise eigenvalues
   parameter_reduction_factor = config['p_parameter_reduction_factor'] # Parameter reduction factor (Letter O in paper) for partially-adaptive focusing
@@ -81,9 +84,8 @@ if __name__ == '__main__':
   sinth_ = np.linspace(-1,1,m_Nbeams) # used to grid up azimuth space, ensure target is on a beam
 
   ### Define array X,Y, and Z positions ###
-  x_centered_ = m_d*np.arange(-m_M_HLA/2,m_M_HLA/2) # 
-  x_zerod_ = x_centered_ - np.min(x_centered_)
-  m_array_x__ = np.asarray([x_centered_,np.zeros(m_M_HLA),np.ones(m_M_HLA)*m_HLA_z0]).transpose()
+  x_centered_ = m_d*np.arange(-m_M_HLA/2,m_M_HLA/2) # set the phase center of the array at 0,0
+  m_array_x__ = np.asarray([x_centered_,np.zeros(m_M_HLA),np.ones(m_M_HLA)*m_HLA_z0]).transpose() # Generate X,Y,Z coordinates of array
 
   ### Variables holding all source parameters ###
   m_Nint = m_int_range_bearing_depth_.shape[0] # number of interferers
@@ -101,7 +103,7 @@ if __name__ == '__main__':
   m_zint_ = m_int_range_bearing_depth_[:,2] # depth of all interferers
 
   ### Load up the interference parameters ###
-  m_th0_[m_int_idx_] = np.radians(m_thint_) # 
+  m_th0_[m_int_idx_] = np.radians(m_thint_)
   m_r_[m_int_idx_] = m_rint_
   m_z_[m_int_idx_] = m_zint_
   m_snr__[m_int_idx_,:] = m_int_snr__
@@ -115,11 +117,11 @@ if __name__ == '__main__':
   ### Load up the target parameters ###
   m_th0_[m_src_idx] = np.radians(m_thsrc) # target bearing
   m_r_[m_src_idx] = m_rsrc # target range
-  m_z_[m_src_idx] = m_zsrc
-  m_snr__[m_src_idx,:] = -50 
-  m_snr__[m_src_idx,::m_target_tone_spacing] = m_target_SNR
+  m_z_[m_src_idx] = m_zsrc # target depth
+  m_snr__[m_src_idx,:] = -50 # at non-tone frequency indices, set SNR to -50dB
+  m_snr__[m_src_idx,::m_target_tone_spacing] = m_target_SNR # set the in-band SNR of each tone
 
-  m_src_x0__ = np.vstack((m_r_*np.cos(m_th0_),m_r_*np.sin(m_th0_),m_z_)).T
+  m_src_x0__ = np.vstack((m_r_*np.cos(m_th0_),m_r_*np.sin(m_th0_),m_z_)).T # X,Y,Z positions of target
 
   m_data_gen_params = dict(
     src_x0__ = m_src_x0__,
@@ -129,24 +131,26 @@ if __name__ == '__main__':
     snr__ = m_snr__,
     flg_normalize_a = m_flg_normalize_a,
   )
-  
-  Xs____ = np.zeros([m_F,m_L+1,m_M,m_Nsnaps],dtype=np.cfloat)
+
+  # Create empty vector for narrowband data
+  # F frequencies x L+1 sources (one "source" is sensor noise) x M sensors x N snapshots
+  Xs____ = np.zeros([m_F,m_L+1,m_M,m_Nsnaps],dtype=np.complex128) 
 
   ### GENERATE SIMULATION DATA ###
-  m_A___ = sim.get_model_A(m_data_gen_params)
+  m_A___ = sim.get_model_A(m_data_gen_params) # F frequencies x L sources x M sensors
   for f in np.arange(m_F):
-    sigma_ = np.power(10,m_snr__[:,f]/10) / m_M
+    sigma_ = np.power(10,m_snr__[:,f]/10) / m_M # determine sigma from SNR
     S__ = np.diag(sigma_)
     Rsl___ = [] # list of rank-1 signal covariances
     for l in range(m_L): # loop over L sources
-      a_ = m_A___[f,l,:].reshape([m_M,1])
+      a_ = m_A___[f,l,:].reshape([m_M,1]) # grab the lth steering vector
       a_ /= np.linalg.norm(a_)
-      Rsl___.append(sigma_[l] * a_ @ H(a_))
-      Xs____[f,l,:,:] = sim.gen_data_from_R(Rsl___[l],m_Nsnaps)
+      Rsl___.append(sigma_[l] * a_ @ H(a_)) # compute outer product
+      Xs____[f,l,:,:] = sim.gen_data_from_R(Rsl___[l],m_Nsnaps) # generate data using cholesky decomposition
 
     ### Generate the noise signals ###
-    N__ = (1/m_M)*np.eye(m_M)
-    Xs____[f,-1,:,:] = sim.gen_data_from_R(N__,m_Nsnaps)
+    N__ = (1/m_M)*np.eye(m_M) # M sensors x M sensors
+    Xs____[f,-1,:,:] = sim.gen_data_from_R(N__,m_Nsnaps) # M sensors x N snapshots
     
   ### SCALE COVARIANCES ALL THE SAME###
   Rl____ = sim.form_covariances(Xs____)
