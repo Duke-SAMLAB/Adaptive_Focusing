@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: Wideband Adaptive Focusing
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Anil
+    family-names: Ganti
+    email: anil.ganti@icloud.com
+    affiliation: Duke University
+    orcid: 'https://orcid.org/0000-0003-4415-0476'
+repository-code: 'https://github.com/Duke-SAMLAB/Adaptive_Focusing'
+keywords:
+  - Passive sonar
+  - Wideband focusing
+license: MIT
+version: '1'
+date-released: '2024-11-07'
